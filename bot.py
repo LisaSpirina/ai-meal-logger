@@ -12,6 +12,8 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
+from tools.vision import identify_food
+from tools.nutrition import lookup_nutrition
 
 load_dotenv()
 
@@ -50,20 +52,59 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     user_id = update.effective_user.id
     message_id = update.message.message_id
 
-    # Telegram sends multiple resolutions — take the largest
     photo_file = await update.message.photo[-1].get_file()
     local_path = DOWNLOADS_DIR / f"{user_id}_{message_id}.jpg"
     await photo_file.download_to_drive(str(local_path))
 
     logger.info("Photo saved: %s", local_path)
-
     await update.message.reply_text("Got your photo! Analyzing... 🔍")
 
-    # TODO: hand local_path to the ReAct agent (week 1 day 3+)
+    try:
+        # Step 1: identify food items from image
+        foods = identify_food(str(local_path))
+        logger.info("Identified foods: %s", foods)
+
+        # Step 2: look up nutrition for each item
+        lines = []
+        total_kcal = 0.0
+        total_protein = 0.0
+        total_fat = 0.0
+        total_carbs = 0.0
+
+        for item in foods:
+            try:
+                nutrition = lookup_nutrition(item["name"])
+                total_kcal += nutrition["kcal_per_100g"]
+                total_protein += nutrition["protein_g"]
+                total_fat += nutrition["fat_g"]
+                total_carbs += nutrition["carbs_g"]
+                lines.append(
+                    f"• {item['name']}\n"
+                    f"  {nutrition['kcal_per_100g']} kcal | "
+                    f"{nutrition['protein_g']}g protein | "
+                    f"{nutrition['fat_g']}g fat | "
+                    f"{nutrition['carbs_g']}g carbs"
+                )
+            except ValueError:
+                lines.append(f"• {item['name']} — nutrition not found")
+
+        reply = (
+            "🍽 *Meal Analysis*\n\n"
+            + "\n".join(lines)
+            + f"\n\n📊 *Total (per 100g each)*\n"
+            f"Calories: {total_kcal:.1f} kcal\n"
+            f"Protein: {total_protein:.1f}g\n"
+            f"Fat: {total_fat:.1f}g\n"
+            f"Carbs: {total_carbs:.1f}g"
+        )
+        await update.message.reply_text(reply, parse_mode="Markdown")
+
+    except Exception as e:
+        logger.error("Analysis failed: %s", e, exc_info=True)
+        await update.message.reply_text(f"Sorry, something went wrong: {str(e)}")
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # Placeholder — will handle portion confirmations and corrections later
     await update.message.reply_text(
         "Send me a photo to log a meal, or use /help for commands."
     )
