@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from google import genai
 from dotenv import load_dotenv
+from config import GEMINI_MODEL
 
 load_dotenv()
 
@@ -14,12 +15,19 @@ def identify_food(image_path: str) -> list[dict]:
     """Returns e.g. [{"name": "grilled chicken breast", "confidence": 0.82}, ...]"""
     image_data = Path(image_path).read_bytes()
 
-    prompt = """Look at this food image and identify all food items visible.
-Respond ONLY with a valid JSON array, no explanation, no markdown. Example:
-[{"name": "grilled chicken breast", "confidence": 0.85}, {"name": "white rice", "confidence": 0.90}]"""
+    prompt = """You are a nutrition expert analyzing a meal photo.
+    Identify every distinct food item visible with as much specificity as possible.
+    For example, prefer "mashed potato with butter" over "mashed potatoes", 
+    "grilled pork chop" over "meat", "fresh dill garnish" over "dill".
+
+    If you cannot determine the specific type (e.g. beef vs pork), 
+    add a note in the name like "meat (likely pork)" — do not just say "meat".
+
+    Respond ONLY with a valid JSON array, no explanation, no markdown:
+    [{"name": "specific food name", "confidence": 0.0_to_1.0}]"""
 
     response = client.models.generate_content(
-        model="gemini-2.5-flash-lite",
+        model=GEMINI_MODEL,
         contents=[
             prompt,
             {"inline_data": {"mime_type": "image/jpeg", "data": base64.b64encode(image_data).decode()}}
