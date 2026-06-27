@@ -12,8 +12,6 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
-from tools.vision import identify_food
-from tools.nutrition import lookup_nutrition
 from agent.react_loop import run_meal_logging
 
 load_dotenv()
@@ -60,8 +58,23 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     logger.info("Photo saved: %s", local_path)
     await update.message.reply_text("Got your photo! Analyzing... 🔍")
 
-    reply = run_meal_logging(user_id, str(local_path))
+    try:
+        reply = run_meal_logging(user_id, str(local_path))
+    except Exception as exc:
+        logger.error("run_meal_logging failed: %s", exc, exc_info=True)
+        reply = "Sorry, something went wrong analyzing your photo. Please try again."
+
     await update.message.reply_text(reply)
+
+
+async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # TODO: wire to db.get_today_summary(user_id) once db.py is ready
+    await update.message.reply_text("Today's summary coming soon!")
+
+
+async def cmd_goals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # TODO: wire to db.set_goals(user_id) once db.py is ready
+    await update.message.reply_text("Goal setting coming soon!")
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -87,6 +100,8 @@ def main() -> None:
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("today", cmd_today))
+    app.add_handler(CommandHandler("goals", cmd_goals))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_error_handler(error_handler)
