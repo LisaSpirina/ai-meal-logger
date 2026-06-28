@@ -225,4 +225,4 @@ __marimo__/
 downloads/
 __pycache__/
 *.pyc
-.venv/
+.venv/data/*.db

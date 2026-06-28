@@ -16,15 +16,16 @@ def identify_food(image_path: str) -> list[dict]:
     image_data = Path(image_path).read_bytes()
 
     prompt = """You are a nutrition expert analyzing a meal photo.
-    Identify every distinct food item visible with as much specificity as possible.
-    For example, prefer "mashed potato with butter" over "mashed potatoes", 
-    "grilled pork chop" over "meat", "fresh dill garnish" over "dill".
+    Identify every distinct food item visible.
 
-    If you cannot determine the specific type (e.g. beef vs pork), 
-    add a note in the name like "meat (likely pork)" — do not just say "meat".
+    IMPORTANT: Use simple, common food names that match USDA database entries.
+    - Good: "salmon fillet", "cherry tomatoes", "feta cheese", "lettuce"
+    - Bad: "pan-seared salmon with black pepper", "teriyaki pre-seasoned salmon fillets"
+    - Strip cooking methods, seasonings, and brand names from the food name
+    - Use the simplest possible name: "salmon" not "seasoned salmon fillet"
 
     Respond ONLY with a valid JSON array, no explanation, no markdown:
-    [{"name": "specific food name", "confidence": 0.0_to_1.0}]"""
+    [{"name": "simple food name", "confidence": 0.0_to_1.0}]"""
 
     response = client.models.generate_content(
         model=GEMINI_MODEL,
