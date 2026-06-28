@@ -14,6 +14,8 @@ PORTION_DEFAULTS: dict[str, int] = {
     "tuna": 130,
     "shrimp": 100,
     "egg": 55,
+    "hard-boiled": 50,
+    "boiled egg": 50,
     "tofu": 150,
     # Carbs
     "rice": 180,

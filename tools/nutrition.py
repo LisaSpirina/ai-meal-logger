@@ -2,6 +2,33 @@
 import os
 import requests
 
+NUTRITION_OVERRIDES: dict[str, dict] = {
+    "egg": {
+        "fdc_id": 0,
+        "name": "egg",
+        "kcal_per_100g": 155.0,
+        "protein_g": 13.0,
+        "fat_g": 11.0,
+        "carbs_g": 1.1,
+    },
+    "hard-boiled egg": {
+        "fdc_id": 0,
+        "name": "hard-boiled egg",
+        "kcal_per_100g": 155.0,
+        "protein_g": 13.0,
+        "fat_g": 11.0,
+        "carbs_g": 1.1,
+    },
+    "boiled egg": {
+        "fdc_id": 0,
+        "name": "boiled egg",
+        "kcal_per_100g": 155.0,
+        "protein_g": 13.0,
+        "fat_g": 11.0,
+        "carbs_g": 1.1,
+    },
+}
+
 NUTRIENT_IDS = {
     1008: "kcal_per_100g",
     1003: "protein_g",
@@ -12,6 +39,9 @@ NUTRIENT_IDS = {
 _cache: dict[str, dict] = {}
 
 def lookup_nutrition(food_name: str) -> dict:
+    override = NUTRITION_OVERRIDES.get(food_name.lower())
+    if override:
+        return override
     """Returns {"fdc_id", "name", "kcal_per_100g", "protein_g", "fat_g", "carbs_g"}"""
     if food_name in _cache:
         return _cache[food_name]

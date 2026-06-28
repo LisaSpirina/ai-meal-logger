@@ -94,7 +94,7 @@ def _call_tool(action: str, action_input: dict, image_path: str | None) -> dict:
         return {"foods": foods_sorted}
 
     if action == "lookup_nutrition":
-        food_name = action_input.get("food_name")  # ← assign first
+        food_name = action_input.get("food_name")
         if not food_name:
             raise ValueError("lookup_nutrition requires 'food_name'")
         try:
@@ -102,18 +102,17 @@ def _call_tool(action: str, action_input: dict, image_path: str | None) -> dict:
         except ValueError:
             words = food_name.split()
             simple = " ".join(words[:2]) if len(words) > 2 else food_name
-        if simple != food_name:
-            try:
-                return lookup_nutrition(simple)
-            except ValueError:
-                pass
-        # Try single word as last resort
-        if len(words) > 1:
-            try:
-                return lookup_nutrition(words[0])
-            except ValueError:
-                pass
-        raise ValueError(f"No USDA match for '{food_name}'")
+            if simple != food_name:
+                try:
+                    return lookup_nutrition(simple)
+                except ValueError:
+                    pass
+            if len(words) > 1:
+                try:
+                    return lookup_nutrition(words[0])
+                except ValueError:
+                    pass
+            raise ValueError(f"No USDA match for '{food_name}'")
 
     if action == "estimate_portion":
         food_name = action_input.get("food_name")
@@ -133,14 +132,15 @@ def _parse_step(raw_text: str) -> dict:
 
 
 def _merge_into_collected(items: list[dict], data: dict) -> None:
+    """Merges nutrition/portion data into the matching collected item."""
     name = data.get("name", "")
     for item in items:
         item_name = item.get("name", "").lower()
         data_name = name.lower()
         if item_name in data_name or data_name in item_name:
-            original_name = item.get("name")  # preserve vision name
+            original_name = item.get("name")
             item.update(data)
-            item["name"] = original_name  # restore it after update
+            item["name"] = original_name  # preserve vision name
             return
     for item in reversed(items):
         if "kcal_per_100g" not in item:

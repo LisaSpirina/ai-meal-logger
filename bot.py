@@ -17,12 +17,11 @@ from telegram.ext import (
 )
 
 from db.init_db import init_db
-from agent.react_loop import run_meal_logging, run_text_logging
+from agent.react_loop import run_meal_logging, run_text_logging, _format_reply_from_collected
 import tools.db as db
 from tools.nutrition import lookup_nutrition
 from tools.portion import estimate_portion
-from agent.react_loop import _format_reply_from_collected
-from jobs.weekly_insight import format_week_insights, send_weekly_insight
+from jobs.weekly_insight import format_week_insights
 
 load_dotenv()
 
@@ -35,10 +34,7 @@ logger = logging.getLogger(__name__)
 DOWNLOADS_DIR = Path("downloads")
 DOWNLOADS_DIR.mkdir(exist_ok=True)
 
-# Conversation states for /goals flow
 GOALS_KCAL, GOALS_PROTEIN = range(2)
-
-# In-memory store: user_id → meal data waiting for confirmation
 _pending_meals: dict[int, dict] = {}
 
 
@@ -98,6 +94,7 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         parse_mode="Markdown",
     )
 
+
 async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     db.ensure_user(user.id, user.first_name)
@@ -122,7 +119,6 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         lines.append(
             f"📅 {dt}\n"
             f"  {meal['total_kcal']:.0f} kcal | {meal['total_protein_g']:.1f}g protein\n"
-            f"  _{meal['summary']}_\n"
         )
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
@@ -238,7 +234,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     db.ensure_user(user.id, user.first_name)
     message_id = update.message.message_id
 
-    # Guard: don't overwrite a pending confirmation
     if user.id in _pending_meals:
         await update.message.reply_text(
             "You still have a meal waiting to be confirmed! "
@@ -311,7 +306,6 @@ async def handle_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE
             await query.edit_message_text("Session expired. Please send the photo again.")
             return
 
-        # Save to database
         try:
             db.save_meal(
                 user_id,
@@ -370,7 +364,6 @@ async def handle_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
 
-    # Safety: clear both flags if somehow both are set
     if context.user_data.get("awaiting_addition") and context.user_data.get("awaiting_correction"):
         context.user_data["awaiting_addition"] = False
         context.user_data["awaiting_correction"] = False
@@ -403,12 +396,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 item["grams"] = grams
                 item["user_corrected"] = True
                 matched = True
-
-        # If nutrition data is missing, try to look it up now
                 if item.get("kcal_per_100g", 0) == 0:
                     try:
                         nutrition = lookup_nutrition(food_name)
                         item.update(nutrition)
+                        item["name"] = food_name  # keep user's name
                         logger.info("Re-fetched nutrition for '%s'", food_name)
                     except (ValueError, RuntimeError) as exc:
                         logger.warning(
@@ -418,22 +410,29 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 break
 
         if not matched:
+            item_names = [i.get("name", "unknown") for i in pending["items"]]
             await update.message.reply_text(
-                f"Couldn't find '{food_name}' in the logged items. "
-                f"Try using part of the exact name shown above."
+                f"Couldn't find '{food_name}'. Logged items are:\n"
+                + "\n".join(f"• {n}" for n in item_names)
+                + "\n\nTry using one of these names exactly."
             )
             context.user_data["awaiting_correction"] = True
             return
+
+        updated_reply = _format_reply_from_collected("Meal logged.", pending["items"])
+        pending["summary"] = updated_reply
 
         keyboard = [[
             InlineKeyboardButton("✅ Save", callback_data="confirm"),
             InlineKeyboardButton("✏️ Edit more", callback_data="edit"),
             InlineKeyboardButton("➕ Add item", callback_data="add"),
         ]]
-        await update.message.reply_text(
+        sent = await update.message.reply_text(
             f"✏️ Updated {food_name} to {grams}g.\n\nAnything else, or save?",
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
+        pending["message_id"] = sent.message_id
+        pending["chat_id"] = update.effective_chat.id
         return
 
     if context.user_data.get("awaiting_addition"):
@@ -475,24 +474,26 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await update.message.reply_text("Nutrition lookup failed. Please try again.")
             return
 
-        # After the for loop and not-matched check:
-    updated_reply = _format_reply_from_collected("Meal logged.", pending["items"])
-    pending["summary"] = updated_reply
+        updated_reply = _format_reply_from_collected("Meal logged.", pending["items"])
+        pending["summary"] = updated_reply
 
-    keyboard = [[
-    InlineKeyboardButton("✅ Save", callback_data="confirm"),
-    InlineKeyboardButton("✏️ Edit more", callback_data="edit"),
-    InlineKeyboardButton("➕ Add item", callback_data="add"),
-]]
+        keyboard = [[
+            InlineKeyboardButton("✅ Save", callback_data="confirm"),
+            InlineKeyboardButton("✏️ Edit more", callback_data="edit"),
+            InlineKeyboardButton("➕ Add item", callback_data="add"),
+        ]]
+        sent = await update.message.reply_text(
+            updated_reply + "\n\nDoes this look right?",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+        pending["message_id"] = sent.message_id
+        pending["chat_id"] = update.effective_chat.id
+        return
 
-    sent = await update.message.reply_text(  # ← store sent
-        f"✏️ Updated {food_name} to {grams}g.\n\nAnything else, or save?",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-)
-    # Update message ID so confirm edits the right message
-    pending["message_id"] = sent.message_id       # ← add this
-    pending["chat_id"] = update.effective_chat.id  # ← add this
-    return
+    await update.message.reply_text(
+        "Send me a photo to log a meal, or use /help for commands."
+    )
 
 
 # ---------------------------------------------------------------------------
