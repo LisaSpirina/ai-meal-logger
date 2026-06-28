@@ -250,6 +250,16 @@ def test_get_meal_history_most_recent_first():
     db.save_meal(1001, None, "First meal", SAMPLE_ITEMS)
     db.save_meal(1001, None, "Second meal", SAMPLE_ITEMS)
 
+    # Force timestamp difference so ordering is deterministic
+    from tools.db import _conn
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE meal_log SET timestamp = '2026-01-01 10:00:00' WHERE summary = 'First meal'"
+        )
+        conn.execute(
+            "UPDATE meal_log SET timestamp = '2026-01-01 11:00:00' WHERE summary = 'Second meal'"
+        )
+
     history = db.get_meal_history(1001)
     assert history[0]["summary"] == "Second meal"
     assert history[1]["summary"] == "First meal"
