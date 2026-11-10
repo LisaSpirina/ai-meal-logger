@@ -78,7 +78,7 @@ Built as a project for the Generative and Agentic AI course at HAW Hamburg.
 ## Authors
 
 - [Lisa Spirina](https://github.com/LisaSpirina)
-- [Aung Htet]([https://github.com/AungHtet-mm))
+- [Aung Htet]([https://github.com/AungHtet-mm)
 
 ## License
 
